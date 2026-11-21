@@ -93,7 +93,7 @@ Available options:
   -h, --help           Display this help message
 ```
 
-The web version is already hosted [here](https://ziap.github.io/2048-ai). For
+This fork's web version is hosted [here](https://xlone9773.github.io/2048-ai/). For
 hosting locally, just compile everything as shown above and use any HTTP
 server, for example:
 

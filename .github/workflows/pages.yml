@@ -1,0 +1,97 @@
+name: Deploy to GitHub Pages
+
+# 发布的是"仓库根目录那套网页 + CI 现编的 wasm":
+#   index.html / ai.css / sw.js / js/ / vendor/ / zig-out/main.wasm
+# 隔离(COOP/COEP)交给仓库自带的 sw.js —— 它会给响应补头, 所以第一次访问之后
+# 页面就是跨域隔离的, 引擎与线程池照常工作(GitHub Pages 不能自定义响应头)。
+#
+# 用法: Settings → Pages → Source 选 "GitHub Actions"; 本工作流放在默认分支
+# (master) 上, 所以既能手动触发, 也会在推 master 且改动命中下面 paths 时自动跑。
+
+on:
+  workflow_dispatch:
+    inputs:
+      budget:
+        description: "wasm 搜索预算(BFS buffer, 默认 2097152 = 2^21; 655360 = 上游默认)"
+        required: false
+        default: "2097152"
+      zig:
+        description: "Zig 版本(需要 0.17.x, 0.16 编不过 master)"
+        required: false
+        default: "0.17.1"
+  push:
+    branches: [master]
+    paths:
+      - "pages/**"
+      - "index.html"
+      - "ai.css"
+      - "sw.js"
+      - "js/**"
+      - "vendor/**"
+      - "src/**"
+      - "build.zig"
+      - ".github/workflows/pages.yml"
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Zig
+        env:
+          ZIG_VERSION: ${{ inputs.zig || '0.17.1' }}
+        run: |
+          set -euo pipefail
+          url="https://ziglang.org/download/${ZIG_VERSION}/zig-x86_64-linux-${ZIG_VERSION}.tar.xz"
+          echo "下载 $url"
+          curl -fsSL -o zig.tar.xz "$url"
+          mkdir -p "$RUNNER_TEMP/zig"
+          tar -xJf zig.tar.xz -C "$RUNNER_TEMP/zig" --strip-components=1
+          echo "$RUNNER_TEMP/zig" >> "$GITHUB_PATH"
+          "$RUNNER_TEMP/zig/zig" version
+
+      - name: Build wasm
+        env:
+          BUDGET: ${{ inputs.budget || '2097152' }}
+        run: |
+          set -euo pipefail
+          zig build --release=fast "-Dbudget=$BUDGET"
+          bytes=$(stat -c%s zig-out/main.wasm)
+          echo "wasm: ${bytes} 字节, md5 $(md5sum zig-out/main.wasm | cut -d' ' -f1), budget=$BUDGET"
+          echo "budget=$BUDGET" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Stage site
+        run: |
+          set -euo pipefail
+          mkdir -p _site/zig-out
+          cp index.html ai.css sw.js _site/
+          cp -r js vendor _site/
+          cp zig-out/main.wasm _site/zig-out/
+          touch _site/.nojekyll
+          find _site -type f | sort
+
+      - name: Configure Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+
+      - name: Deploy
+        id: deploy
+        uses: actions/deploy-pages@v4

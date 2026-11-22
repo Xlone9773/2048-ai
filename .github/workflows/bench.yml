@@ -11,17 +11,17 @@ on:
   workflow_dispatch:
     inputs:
       budget:
-        description: "BFS 预算(-b)"
+        description: "BFS 预算(-b)。成本提示: 2^16≈2s/局, 2^19≈180s/局, 2^21≈1500s/局(CPU 时间)"
         required: false
-        default: "2097152"
+        default: "524288"
       cache:
         description: "CLI 置换表位数(-Dcache; 留空=18, 填 20 与网页版一致)"
         required: false
         default: ""
       games:
-        description: "局数(-i)"
+        description: "局数(-i)。墙钟 ≈ 局数×每局CPU/约3(4 线程时)"
         required: false
-        default: "30"
+        default: "8"
       threads:
         description: "线程数(-t, 0 = 让 CLI 自己定)"
         required: false

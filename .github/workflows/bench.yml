@@ -1,0 +1,119 @@
+name: Bench (CLI)
+
+# 引擎基准: 在免费的 runner 上跑控制台版(比手机快一个量级), 结果写进 job summary。
+#
+# 调参流程: 开一个分支改源码/常量 → 推上去 → 在这里把分支选成要跑的那个 →
+# 和别次运行的摘要对比(同种子时是配对比较, 噪声小得多)。
+#
+# 本工作流必须存在于默认分支才能在 UI/API 里被触发; 实际跑的是你选的那个 ref。
+
+on:
+  workflow_dispatch:
+    inputs:
+      budget:
+        description: "BFS 预算(-b)"
+        required: false
+        default: "2097152"
+      games:
+        description: "局数(-i)"
+        required: false
+        default: "30"
+      threads:
+        description: "线程数(-t, 0 = 让 CLI 自己定)"
+        required: false
+        default: "4"
+      seed:
+        description: "随机种子(-s); 同种子可复现, 便于配对比较"
+        required: false
+        default: "benchmark"
+      label:
+        description: "这次跑法的标签(写进摘要)"
+        required: false
+        default: ""
+      zig:
+        description: "Zig 版本(需 0.17.x)"
+        required: false
+        default: "0.17.1"
+
+permissions:
+  contents: read
+
+jobs:
+  bench:
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Zig
+        env:
+          ZIG_VERSION: ${{ inputs.zig }}
+        run: |
+          set -euo pipefail
+          url="https://ziglang.org/download/${ZIG_VERSION}/zig-x86_64-linux-${ZIG_VERSION}.tar.xz"
+          curl -fsSL -o zig.tar.xz "$url"
+          mkdir -p "$RUNNER_TEMP/zig"
+          tar -xJf zig.tar.xz -C "$RUNNER_TEMP/zig" --strip-components=1
+          echo "$RUNNER_TEMP/zig" >> "$GITHUB_PATH"
+          "$RUNNER_TEMP/zig/zig" version
+
+      - name: Build
+        env:
+          BUDGET: ${{ inputs.budget }}
+        run: |
+          set -euo pipefail
+          zig build --release=fast "-Dbudget=$BUDGET"
+          echo "wasm: $(stat -c%s zig-out/main.wasm)B md5 $(md5sum zig-out/main.wasm | cut -d' ' -f1)"
+          echo "CLI: $(stat -c%s zig-out/bin/2048)B"
+
+      - name: Run benchmark
+        env:
+          BUDGET: ${{ inputs.budget }}
+          GAMES: ${{ inputs.games }}
+          THREADS: ${{ inputs.threads }}
+          SEED: ${{ inputs.seed }}
+        run: |
+          set -euo pipefail
+          args=(-i "$GAMES" -b "$BUDGET" -s "$SEED")
+          if [ "$THREADS" != "0" ]; then args+=(-t "$THREADS"); fi
+          echo "跑: ./zig-out/bin/2048 ${args[*]}"
+          ./zig-out/bin/2048 "${args[@]}" 2>&1 | tee bench.log
+
+      - name: Summarize
+        env:
+          LABEL: ${{ inputs.label }}
+          BUDGET: ${{ inputs.budget }}
+          GAMES: ${{ inputs.games }}
+          THREADS: ${{ inputs.threads }}
+          SEED: ${{ inputs.seed }}
+          ZIG: ${{ inputs.zig }}
+        run: |
+          set -euo pipefail
+          md5=$(md5sum zig-out/main.wasm | cut -d' ' -f1)
+          {
+            echo "### 配置"
+            echo
+            echo "| 项 | 值 |"
+            echo "|---|---|"
+            echo "| ref | \`${GITHUB_REF_NAME}\` @ \`${GITHUB_SHA:0:7}\` |"
+            echo "| 构建 | \`zig build --release=fast -Dbudget=${BUDGET}\` (zig ${ZIG}) |"
+            echo "| wasm | md5 \`${md5}\` |"
+            echo "| 参数 | games=${GAMES} threads=${THREADS} seed=${SEED} |"
+            echo
+          } >> "$GITHUB_STEP_SUMMARY"
+          python3 tools/bench/summarize-cli.py bench.log \
+            --label "${LABEL:-ref=$GITHUB_REF_NAME budget=$BUDGET games=$GAMES seed=$SEED}" \
+            --engine "md5=$md5 budget=$BUDGET" --markdown >> "$GITHUB_STEP_SUMMARY"
+          echo "--- 一行结论 ---" >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          python3 tools/bench/summarize-cli.py bench.log --label "ref=$GITHUB_REF_NAME" >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: bench-log-${{ github.run_id }}
+          path: bench.log
+          if-no-files-found: ignore

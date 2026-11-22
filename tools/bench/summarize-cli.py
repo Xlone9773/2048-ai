@@ -70,9 +70,11 @@ def main() -> int:
     )
     if args.label:
         one_line = f"{args.label} | {one_line}"
-    print(one_line)
+    if not args.json:
+        print(one_line)
 
     if args.json:
+        # stdout 必须是纯 JSON(工作流会把它当结果文件下载), 人读的那一行只在非 JSON 模式打印
         payload = {
             "label": args.label,
             "engine": args.engine,

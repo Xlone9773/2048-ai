@@ -2,13 +2,18 @@ const Heuristic = @This();
 
 score_table: [65536]f32,
 
-const LOST_PENALTY = 200000.0;
-const MONO_POWER = 4.0;
-const MONO_WEIGHT = 47.0;
-const SUM_POWER = 3.5;
-const SUM_WEIGHT = 11.0;
-const MERGES_WEIGHT = 700.0;
-const EMPTY_WEIGHT = 270.0;
+// Weights come from `zig build -Dempty=… -Dmerges=… -Dmono=… -Dsum=…` (see
+// build.zig); the defaults are the historical constants so an unconfigured
+// build is unchanged. Exposing them lets a sweep run without editing source.
+const options = @import("build_options");
+
+const LOST_PENALTY = options.lost_penalty;
+const MONO_POWER = options.mono_power;
+const MONO_WEIGHT = options.mono_weight;
+const SUM_POWER = options.sum_power;
+const SUM_WEIGHT = options.sum_weight;
+const MERGES_WEIGHT = options.merges_weight;
+const EMPTY_WEIGHT = options.empty_weight;
 
 pub fn init(self: *Heuristic) void {
   const pow_tables = comptime pow_tables: {

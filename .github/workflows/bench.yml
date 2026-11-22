@@ -30,6 +30,10 @@ on:
         description: "随机种子(-s); 同种子可复现, 便于配对比较"
         required: false
         default: "benchmark"
+      weights:
+        description: "启发式权重覆盖, 例如 mono=60,sum=9 (键: empty/merges/mono/mono_power/sum/sum_power/lost)"
+        required: false
+        default: ""
       label:
         description: "这次跑法的标签(写进摘要)"
         required: false
@@ -66,10 +70,15 @@ jobs:
         env:
           BUDGET: ${{ inputs.budget }}
           CACHE: ${{ inputs.cache }}
+          WEIGHTS: ${{ inputs.weights }}
         run: |
           set -euo pipefail
           flags=("-Dbudget=$BUDGET")
           if [ -n "$CACHE" ]; then flags+=("-Dcache=$CACHE"); fi
+          if [ -n "$WEIGHTS" ]; then
+            IFS=',' read -ra pairs <<< "$WEIGHTS"
+            for pair in "${pairs[@]}"; do flags+=("-D${pair%%=*}=${pair#*=}"); done
+          fi
           echo "构建: zig build --release=fast ${flags[*]}"
           zig build --release=fast "${flags[@]}"
           echo "wasm: $(stat -c%s zig-out/main.wasm)B md5 $(md5sum zig-out/main.wasm | cut -d' ' -f1)"
@@ -93,6 +102,7 @@ jobs:
           LABEL: ${{ inputs.label }}
           BUDGET: ${{ inputs.budget }}
           CACHE: ${{ inputs.cache }}
+          WEIGHTS: ${{ inputs.weights }}
           GAMES: ${{ inputs.games }}
           THREADS: ${{ inputs.threads }}
           SEED: ${{ inputs.seed }}
@@ -109,7 +119,8 @@ jobs:
             echo "| 构建 | \`zig build --release=fast -Dbudget=${BUDGET}\` (zig ${ZIG}) |"
             echo "| wasm | md5 \`${md5}\` |"
             echo "| 参数 | games=${GAMES} threads=${THREADS} seed=${SEED} |"
-            echo "| CLI 置换表 | ${CACHE:-18}(默认)} |"
+            echo "| CLI 置换表 | ${CACHE:-18}(默认) |"
+            echo "| 权重覆盖 | ${WEIGHTS:-(默认)} |"
             echo
           } >> "$GITHUB_STEP_SUMMARY"
           python3 tools/bench/summarize-cli.py bench.log \
@@ -124,6 +135,7 @@ jobs:
         env:
           LABEL: ${{ inputs.label }}
           BUDGET: ${{ inputs.budget }}
+          WEIGHTS: ${{ inputs.weights }}
           GAMES: ${{ inputs.games }}
           THREADS: ${{ inputs.threads }}
           SEED: ${{ inputs.seed }}
@@ -132,7 +144,7 @@ jobs:
           python3 tools/bench/summarize-cli.py bench.log --json \
             --label "${LABEL:-ref=$GITHUB_REF_NAME}" \
             --engine "md5=$(md5sum zig-out/main.wasm | cut -d' ' -f1) budget=$BUDGET" \
-            --config "budget=$BUDGET cache=${CACHE:-18} games=$GAMES threads=$THREADS seed=$SEED" > bench-result.json
+            --config "budget=$BUDGET cache=${CACHE:-18} weights=${WEIGHTS:-default} games=$GAMES threads=$THREADS seed=$SEED" > bench-result.json
           cat bench-result.json
 
       - name: Upload log + result

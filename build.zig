@@ -18,6 +18,16 @@ pub fn build(b: *std.Build) void {
   // benchmark can match the wasm's table (20) instead of the CLI default (18).
   const cache_bits = b.option(u6, "cache", "Transposition table bits for the console build") orelse 18;
 
+  // Heuristic parameters, exposed so a weight sweep does not need source edits.
+  // Defaults are the historical values (Heuristic.zig).
+  const empty_weight = b.option(f32, "empty", "heuristic: weight per empty cell") orelse 270.0;
+  const merges_weight = b.option(f32, "merges", "heuristic: weight per merge potential") orelse 700.0;
+  const mono_weight = b.option(f32, "mono", "heuristic: monotonicity weight") orelse 47.0;
+  const mono_power = b.option(f32, "mono_power", "heuristic: monotonicity exponent") orelse 4.0;
+  const sum_weight = b.option(f32, "sum", "heuristic: tile-sum weight") orelse 11.0;
+  const sum_power = b.option(f32, "sum_power", "heuristic: tile-sum exponent") orelse 3.5;
+  const lost_penalty = b.option(f32, "lost", "heuristic: baseline constant") orelse 200000.0;
+
   const utils = b.addModule("utils", .{
     .root_source_file = b.path("src/utils/main.zig"),
   });
@@ -31,6 +41,16 @@ pub fn build(b: *std.Build) void {
       },
     },
   });
+
+  const engine_options = b.addOptions();
+  engine_options.addOption(f32, "empty_weight", empty_weight);
+  engine_options.addOption(f32, "merges_weight", merges_weight);
+  engine_options.addOption(f32, "mono_weight", mono_weight);
+  engine_options.addOption(f32, "mono_power", mono_power);
+  engine_options.addOption(f32, "sum_weight", sum_weight);
+  engine_options.addOption(f32, "sum_power", sum_power);
+  engine_options.addOption(f32, "lost_penalty", lost_penalty);
+  engine.addImport("build_options", engine_options.createModule());
 
   const imports = [_]std.Build.Module.Import{
     .{

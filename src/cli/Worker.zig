@@ -1,6 +1,8 @@
 const Worker = @This();
 
-const Expectimax = engine.Expectimax(*const Heuristic, 18);
+// Sized by `zig build -Dcache=<bits>`; default 18 keeps the historical console
+// behaviour, `-Dcache=20` matches the web build's transposition table.
+const Expectimax = engine.Expectimax(*const Heuristic, @import("build_options").cache_bits);
 
 id: u32,
 rng: Fmc256,

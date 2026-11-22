@@ -14,6 +14,10 @@ on:
         description: "BFS 预算(-b)"
         required: false
         default: "2097152"
+      cache:
+        description: "CLI 置换表位数(-Dcache; 留空=18, 填 20 与网页版一致)"
+        required: false
+        default: ""
       games:
         description: "局数(-i)"
         required: false
@@ -61,9 +65,13 @@ jobs:
       - name: Build
         env:
           BUDGET: ${{ inputs.budget }}
+          CACHE: ${{ inputs.cache }}
         run: |
           set -euo pipefail
-          zig build --release=fast "-Dbudget=$BUDGET"
+          flags=("-Dbudget=$BUDGET")
+          if [ -n "$CACHE" ]; then flags+=("-Dcache=$CACHE"); fi
+          echo "构建: zig build --release=fast ${flags[*]}"
+          zig build --release=fast "${flags[@]}"
           echo "wasm: $(stat -c%s zig-out/main.wasm)B md5 $(md5sum zig-out/main.wasm | cut -d' ' -f1)"
           echo "CLI: $(stat -c%s zig-out/bin/2048)B"
 
@@ -84,6 +92,7 @@ jobs:
         env:
           LABEL: ${{ inputs.label }}
           BUDGET: ${{ inputs.budget }}
+          CACHE: ${{ inputs.cache }}
           GAMES: ${{ inputs.games }}
           THREADS: ${{ inputs.threads }}
           SEED: ${{ inputs.seed }}
@@ -100,6 +109,7 @@ jobs:
             echo "| 构建 | \`zig build --release=fast -Dbudget=${BUDGET}\` (zig ${ZIG}) |"
             echo "| wasm | md5 \`${md5}\` |"
             echo "| 参数 | games=${GAMES} threads=${THREADS} seed=${SEED} |"
+            echo "| CLI 置换表 | ${CACHE:-18}(默认)} |"
             echo
           } >> "$GITHUB_STEP_SUMMARY"
           python3 tools/bench/summarize-cli.py bench.log \
@@ -122,7 +132,7 @@ jobs:
           python3 tools/bench/summarize-cli.py bench.log --json \
             --label "${LABEL:-ref=$GITHUB_REF_NAME}" \
             --engine "md5=$(md5sum zig-out/main.wasm | cut -d' ' -f1) budget=$BUDGET" \
-            --config "budget=$BUDGET games=$GAMES threads=$THREADS seed=$SEED" > bench-result.json
+            --config "budget=$BUDGET cache=${CACHE:-18} games=$GAMES threads=$THREADS seed=$SEED" > bench-result.json
           cat bench-result.json
 
       - name: Upload log + result

@@ -13,6 +13,10 @@ pub fn build(b: *std.Build) void {
   const strip = optimize == .fast or optimize == .small;
 
   const budget = b.option(u32, "budget", "BFS buffer size for the wasm build, in Boards") orelse DEFAULT_BUDGET;
+  // Transposition table size (log2 entries) for the *console* build. The web
+  // build keeps its own constant in ParallelSearch.zig; this exists so a
+  // benchmark can match the wasm's table (20) instead of the CLI default (18).
+  const cache_bits = b.option(u6, "cache", "Transposition table bits for the console build") orelse 18;
 
   const utils = b.addModule("utils", .{
     .root_source_file = b.path("src/utils/main.zig"),
@@ -51,6 +55,10 @@ pub fn build(b: *std.Build) void {
   });
 
   b.installArtifact(main_exe);
+
+  const cli_options = b.addOptions();
+  cli_options.addOption(u6, "cache_bits", cache_bits);
+  main_exe.root_module.addOptions("build_options", cli_options);
 
   const main_cmd = b.addRunArtifact(main_exe);
   main_cmd.step.dependOn(b.getInstallStep());

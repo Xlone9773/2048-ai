@@ -10,6 +10,7 @@ CLI 会按线程周期性地打印进度块(而且多线程时相邻两次输出
 from __future__ import annotations
 
 import argparse
+import json
 import re
 import sys
 from pathlib import Path
@@ -49,6 +50,8 @@ def main() -> int:
     ap.add_argument("--label", default="", help="这次跑法的描述(写进摘要)")
     ap.add_argument("--engine", default="", help="引擎身份, 例如 'md5=2952a5b9 budget=2097152'")
     ap.add_argument("--markdown", action="store_true", help="输出可以直接贴进 job summary 的 Markdown")
+    ap.add_argument("--json", action="store_true", help="输出机器可读的结果(便于多次运行对比)")
+    ap.add_argument("--config", default="", help="这次运行的配置, 例如 'budget=2097152 games=30 threads=4 seed=benchmark'")
     args = ap.parse_args()
 
     text = Path(args.log).read_text(encoding="utf-8", errors="replace")
@@ -68,6 +71,22 @@ def main() -> int:
     if args.label:
         one_line = f"{args.label} | {one_line}"
     print(one_line)
+
+    if args.json:
+        payload = {
+            "label": args.label,
+            "engine": args.engine,
+            "config": args.config,
+            "games": stats["games"],
+            "avg_score": stats.get("avg_score", 0),
+            "max_score": stats.get("max_score", 0),
+            "rates": {str(k): v for k, v in sorted(stats["rates"].items())},
+            "cpu_moves_per_s": stats.get("cpu_moves_per_s", 0),
+            "wall_moves_per_s": stats.get("wall_moves_per_s"),
+            "cpu_seconds": stats.get("cpu_seconds", 0),
+        }
+        print(json.dumps(payload, ensure_ascii=False, indent=2))
+        return 0
 
     if args.markdown:
         print()

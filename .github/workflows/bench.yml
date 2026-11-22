@@ -110,10 +110,27 @@ jobs:
           python3 tools/bench/summarize-cli.py bench.log --label "ref=$GITHUB_REF_NAME" >> "$GITHUB_STEP_SUMMARY"
           echo '```' >> "$GITHUB_STEP_SUMMARY"
 
-      - name: Upload log
+      - name: Machine-readable result
+        env:
+          LABEL: ${{ inputs.label }}
+          BUDGET: ${{ inputs.budget }}
+          GAMES: ${{ inputs.games }}
+          THREADS: ${{ inputs.threads }}
+          SEED: ${{ inputs.seed }}
+        run: |
+          set -euo pipefail
+          python3 tools/bench/summarize-cli.py bench.log --json \
+            --label "${LABEL:-ref=$GITHUB_REF_NAME}" \
+            --engine "md5=$(md5sum zig-out/main.wasm | cut -d' ' -f1) budget=$BUDGET" \
+            --config "budget=$BUDGET games=$GAMES threads=$THREADS seed=$SEED" > bench-result.json
+          cat bench-result.json
+
+      - name: Upload log + result
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: bench-log-${{ github.run_id }}
-          path: bench.log
+          name: bench-${{ github.run_id }}
+          path: |
+            bench.log
+            bench-result.json
           if-no-files-found: ignore
